@@ -1,0 +1,38 @@
+# 
+# Log Managment
+# 
+# $ docker-compose \
+#    -f docker-compose.yml \
+#    -f docker-compose.override.yaml \
+#    -f docker-compose.log-managment.yml up
+# 
+version: '3.5'
+
+services:
+
+  vote:
+    # sudo docker run -p 5601:5601 -p 9200:9200 -p 5044:5044 -it --name elk sebp/elk
+    image: sebp/elk:latest
+    restart: always
+    ports:
+      - 80:80
+      - 5601:5601
+      - 9200:9200
+      - 5044:5044
+    environment:
+      - LOGSTASH_START=1
+      - KIBANA_START=1
+      - ES_CONNECT_RETRY=30
+      - ES_PROTOCOL=http
+      - ES_HEAP_SIZE=2g
+      - LS_HEAP_SIZE=1g
+      - CLUSTER_NAME=none
+      - LS_HEAP_SIZE=50ms
+      - MAX_OPEN_FILES=60000
+      - KIBANA_CONNECT_RETRY=30
+    # cmd:
+    #   # /usr/local/bin/elk-pre-hooks.sh
+    #   - cat << EOF >> /etc/default/elasticsearch
+    #     MY_CUSTOM_VAR=$MY_CUSTOM_VAR
+    #     export MY_CUSTOM_VAR 
+    #     EOF
