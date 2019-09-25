@@ -1,0 +1,93 @@
+version: '3.7'
+
+services:
+
+  traefik:
+    image: traefik:v1.7.12-alpine
+    command:
+      - "--logLevel=DEBUG"
+      - "--api"
+      - "--metrics"
+      - "--metrics.prometheus.buckets=0.1,0.3,1.2,5.0"
+      - "--docker"
+      - "--docker.swarmMode"
+      - "--docker.domain=docker.localhost"
+      - "--docker.watch"
+    networks:
+      - traefik
+      - monitor-net
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+      - target: 8080
+        published: 8080
+        protocol: tcp
+        mode: ingress
+    deploy:
+      mode: global
+      placement:
+        constraints:
+          - node.role == manager
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+
+  app:
+    image: app/latest
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command: 
+      - '--path.procfs=/host/proc' 
+      - '--path.sysfs=/host/sys'
+      - --collector.filesystem.ignored-mount-points
+      - "^/(sys|proc|dev|host|etc|rootfs/var/lib/docker/containers|rootfs/var/lib/docker/overlay2|rootfs/run/docker/netns|rootfs/var/lib/docker/aufs)($$|/)"
+    ports:
+      - 80:3000
+    networks:
+      - monitor-net
+    deploy:
+      mode: global
+      restart_policy:
+        condition: on-failure
+
+  redis:
+    image: redis:5.0.5-buster
+    env_file:
+      - ./redis/config.monitoring
+    networks:
+      - monitor-net
+    user: "104"
+    deploy:
+      placement:
+        constraints:
+          - node.role==manager
+      labels:
+        - "traefik.frontend.rule=Host:redis.localhost"
+        - "traefik.backend=redis"
+        - "traefik.port=3000"
+        - "traefik.docker.network=traefik"
+      restart_policy:
+        condition: on-failure
+
+
+volumes:
+    prometheus_data: {}
+    redis_data: {}
+
+networks:
+  monitor-net:
+    driver: overlay
+    name: inbound
+  traefik:
+    driver: overlay
+    name: traefik
