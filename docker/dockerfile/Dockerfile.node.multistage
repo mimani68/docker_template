@@ -1,0 +1,250 @@
+# 
+# *README
+# 
+# **Resource**
+# -----------------------------
+#   https://github.com/BretFisher/node-docker-good-defaults
+# 
+# 
+# **Usage** in CLI mode
+# -----------------------------
+# sudo docker build \
+#  --target development \
+#  --file Dockerfile \
+#  --tag service:v1.0.1 \ 
+#  --build-arg WORK_DIR='/usr/src' \
+#  --build-arg BUILD_DATE=$(date --utc --rfc-3339=s) \
+#  --build-arg VCS_REF=$(git rev-parse --short HEAD) \
+#  --build-arg BUILD_VERSION='1.0.0' \
+#  # --env list               # OS envirnoment variable \ 
+#  # --label ['test']         # images lable \ 
+#  # --isolation="default"    # only windows securety \ 
+#  --compress               # Compress the build context using gzip \ 
+#  --force-rm               # Always remove intermediate containers \ 
+#  .
+# 
+
+# 
+# --------------------------------------------------
+FROM node:10.16.0-stretch AS build_development
+# --------------------------------------------------
+# 
+# 
+# intermediate layer
+# DON'T CHANGE ADDRESS
+# 
+ENV WORK_DIR /usr/src
+RUN mkdir -p $WORK_DIR && chown node:node $WORK_DIR
+WORKDIR $WORK_DIR
+
+USER node
+
+# COPY --chown=node:node package.json ./
+COPY package.json .npmrc ./
+
+# RUN --chown=node:node npm run build:dev
+RUN npm run build:dev
+
+# COPY --chown=node:node . .
+COPY . $WORK_DIR
+
+
+# 
+# --------------------------------------------------
+FROM node:10.16.0-stretch AS build_production
+# --------------------------------------------------
+# 
+# 
+# intermediate layer
+# DON'T CHANGE ADDRESS
+# 
+ENV WORK_DIR /usr/src
+RUN mkdir -p $WORK_DIR && chown node:node $WORK_DIR
+WORKDIR $WORK_DIR
+
+USER node
+
+# COPY --chown=node:node package.json ./
+COPY package.json .npmrc ./
+
+# RUN npm install --no-optional --only=production
+# RUN npm install --no-optional --only=production && \
+# npm cache clean --force
+RUN npm run build:prod
+# RUN --chown=node:node npm install
+
+# COPY --chown=node:node . .
+COPY . $WORK_DIR
+
+
+
+
+
+# 
+# --------------------------------------------------
+FROM node:10.16.0-stretch AS development
+# --------------------------------------------------
+# 
+ARG BUILD_DATE
+ARG VCS_REF
+ARG BUILD_VERSION
+
+ENV NPM_CONFIG_LOGLEVEL debug
+
+ARG NODE_ENV=development
+ENV NODE_ENV $NODE_ENV
+
+ARG WORK_DIR
+RUN mkdir -p $WORK_DIR && chown node:node $WORK_DIR
+WORKDIR $WORK_DIR
+
+ARG PORT
+ENV PORT $PORT
+
+USER node
+
+# HEALTHCHECK NONE
+HEALTHCHECK --interval=5m --timeout=10s \
+    CMD curl -f http://localhost:${PORT}/healthz || exit 1
+# HEALTHCHECK --interval=30s \
+#     CMD node healthcheck.js
+
+COPY --from=build_development /usr/src $WORK_DIR
+
+EXPOSE $PORT 9229 9230
+
+CMD [ "npm", "run", "start" ]
+
+
+
+
+
+# 
+# --------------------------------------------------
+FROM node:10.16.0-stretch AS test
+# --------------------------------------------------
+# 
+ARG WORK_DIR
+RUN mkdir -p $WORK_DIR && chown node:node $WORK_DIR
+WORKDIR $WORK_DIR
+
+COPY --from=development /usr/src $WORK_DIR
+
+EXPOSE $PORT
+
+CMD [ "npm", "run", "test:unit" ]
+
+
+
+
+
+# 
+# --------------------------------------------------
+FROM node:10.16.0-stretch-slim AS production_slim
+# --------------------------------------------------
+# 
+ARG BUILD_DATE
+ARG VCS_REF
+ARG BUILD_VERSION
+
+# NPM_CONFIG_LOGLEVEL = info
+ARG NPM_CONFIG_LOGLEVEL
+ENV NPM_CONFIG_LOGLEVEL $NPM_CONFIG_LOGLEVEL
+
+ENV NODE_ENV=production 
+
+# ARG PORT
+# ENV PORT $PORT
+
+ARG WORK_DIR
+RUN mkdir -p $WORK_DIR && chown node:node $WORK_DIR
+WORKDIR $WORK_DIR
+
+LABEL maintainer="imani.mahdi@gmail.com" \ 
+org.label-schema.schema-version="1.0" \ 
+org.label-schema.build-date=$BUILD_DATE \ 
+org.label-schema.name="farsi_projlang/farsi_proj" \ 
+org.label-schema.description="farsi_proj language runtime" \ 
+org.label-schema.url="http://farsi_projlang.org/" \ 
+org.label-schema.vcs-url="https://github.com/farsi_projlang/container-support" \ 
+org.label-schema.vcs-ref=$VCS_REF \ 
+org.label-schema.vendor="FARSI NLP" \ 
+org.label-schema.version=$BUILD_VERSION \ 
+org.label-schema.docker.cmd="docker run -v ~/farsi_proj/packages:/farsi_proj/files -p 9090:9090 -d farsi_projlang/farsi_proj" \ 
+org.label-schema.docker.devel="docker run -v ~/farsi_proj/packages:/farsi_proj/files -p 9090:9090 -d farsi_projlang/farsi_proj" \ 
+org.label-schema.docker.test="docker run -v ~/farsi_proj/packages:/farsi_proj/files -p 9090:9090 -d farsi_projlang/farsi_proj" \ 
+org.label-schema.docker.debug="docker run -v ~/farsi_proj/packages:/farsi_proj/files -p 9090:9090 -d farsi_projlang/farsi_proj" \ 
+org.label-schema.usage="/usr/doc/app-usage.txt"
+
+COPY --from=build_production /usr/src $WORK_DIR
+
+# HEALTHCHECK NONE
+HEALTHCHECK --interval=10m --timeout=5s \
+    CMD curl -f http://localhost:${PORT}/healthz || exit 1
+# HEALTHCHECK --interval=30s \
+#     CMD node healthcheck.js
+
+EXPOSE $PORT
+
+# if you want to use npm start instead, then use `docker run --init in production`
+# so that signals are passed properly. Note the code in index.js is needed to catch Docker signals
+# using node here is still more graceful stopping then npm with --init afaik
+# I still can't come up with a good production way to run with npm and graceful shutdown
+# CMD [ ./bin/www" ]
+CMD [ "node", "index.js" ]
+# CMD [ "npm", "run", "serve" ]
+
+
+# 
+# --------------------------------------------------
+FROM node:10.16.0-alpine AS production_alpine
+# --------------------------------------------------
+# 
+ARG BUILD_DATE
+ARG VCS_REF
+ARG BUILD_VERSION
+
+# NPM_CONFIG_LOGLEVEL = info
+ARG NPM_CONFIG_LOGLEVEL
+ENV NPM_CONFIG_LOGLEVEL $NPM_CONFIG_LOGLEVEL
+
+ENV NODE_ENV=production 
+
+ARG WORK_DIR
+RUN mkdir -p $WORK_DIR && chown node:node $WORK_DIR
+WORKDIR $WORK_DIR
+
+LABEL maintainer="imani.mahdi@gmail.com" \ 
+org.label-schema.schema-version="1.0" \ 
+org.label-schema.build-date=$BUILD_DATE \ 
+org.label-schema.name="farsi_projlang/farsi_proj" \ 
+org.label-schema.description="farsi_proj language runtime" \ 
+org.label-schema.url="http://farsi_projlang.org/" \ 
+org.label-schema.vcs-url="https://github.com/farsi_projlang/container-support" \ 
+org.label-schema.vcs-ref=$VCS_REF \ 
+org.label-schema.vendor="FARSI NLP" \ 
+org.label-schema.version=$BUILD_VERSION \ 
+org.label-schema.docker.cmd="docker run -v ~/farsi_proj/packages:/farsi_proj/files -p 9090:9090 -d farsi_projlang/farsi_proj" \ 
+org.label-schema.docker.devel="docker run -v ~/farsi_proj/packages:/farsi_proj/files -p 9090:9090 -d farsi_projlang/farsi_proj" \ 
+org.label-schema.docker.test="docker run -v ~/farsi_proj/packages:/farsi_proj/files -p 9090:9090 -d farsi_projlang/farsi_proj" \ 
+org.label-schema.docker.debug="docker run -v ~/farsi_proj/packages:/farsi_proj/files -p 9090:9090 -d farsi_projlang/farsi_proj" \ 
+org.label-schema.usage="/usr/doc/app-usage.txt"
+
+COPY --from=build_production /usr/src $WORK_DIR
+
+# check every 30s to ensure this service returns HTTP 200
+# HEALTHCHECK NONE
+HEALTHCHECK --interval=10m --timeout=5s \
+    CMD curl -f http://localhost:${PORT}/healthz || exit 1
+# HEALTHCHECK --interval=30s \
+#     CMD node healthcheck.js
+
+EXPOSE $PORT
+
+# if you want to use npm start instead, then use `docker run --init in production`
+# so that signals are passed properly. Note the code in index.js is needed to catch Docker signals
+# using node here is still more graceful stopping then npm with --init afaik
+# I still can't come up with a good production way to run with npm and graceful shutdown
+# CMD [ ./bin/www" ]
+CMD [ "node", "index.js" ]
+# CMD [ "npm", "run", "serve" ]

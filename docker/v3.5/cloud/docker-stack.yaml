@@ -1,4 +1,4 @@
-version: '3.5'
+version: '3.7'
 
 services:
 
@@ -91,3 +91,11 @@ networks:
   traefik:
     driver: overlay
     name: traefik
+
+# secrets:
+#   my_secret:
+#     file: ./my_secret.txt
+#   my_other_secret:
+#     external: true
+
+# config:

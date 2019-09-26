@@ -1,0 +1,87 @@
+#
+# python:3.7-slim-stretch 
+#   size: 143MB
+# 
+# --------------------------------------------------
+FROM python:3.7-stretch as base
+# --------------------------------------------------
+# 
+ENV PYTHONUNBUFFERED 1
+
+ARG PORT
+ARG PROJ_PATH=/src/usr
+ARG REQ_FILE_PATH
+
+WORKDIR $PROJ_PATH
+RUN mkdir $PROJ_PATH
+
+COPY $REQ_FILE_PATH $PROJ_PATH
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 
+# Development
+# 
+# --------------------------------------------------
+FROM python:3.7-stretch as development
+# --------------------------------------------------
+# 
+LABEL authour="Mahdi Imani <http://github.com/mimani68>" \
+      language="python"
+
+WORKDIR /usr/src
+
+COPY --from=base /src/usr ${WORKDIR}
+
+CMD ["python3", "manage.py", "runserver", "0.0.0.0:3000"]
+
+
+# 
+# uwsgi Swever
+# 
+# -------------------------------------------------- 
+FROM python:3.7-slim-stretch as serve_uwsgi
+# --------------------------------------------------
+# 
+LABEL authour="Mahdi Imani <http://github.com/mimani68>" \
+      language="python"
+
+WORKDIR /usr/src
+
+COPY --from=base /src/usr ${WORKDIR}
+
+CMD ["uwsgi", "--ini", "uwsgi.ini"]
+
+
+# 
+# Gunicorn Web Server
+# 
+# --------------------------------------------------
+FROM python:3.7-slim-stretch as serve_gunicorn
+# --------------------------------------------------
+#
+LABEL authour="Mahdi Imani <http://github.com/mimani68>" \
+      language="python"
+
+WORKDIR /usr/src
+
+COPY --from=base /src/usr ${WORKDIR}
+COPY ./gunicorn.cfg ${WORKDIR}
+
+CMD ["gunicorn", "appname.wsgi", "-c", "gunicorn.cfg"]
+
+
+# 
+# Alpine platform
+# 
+# --------------------------------------------------
+FROM python:3-alpine as serve_alpine
+# --------------------------------------------------
+#
+LABEL authour="Mahdi Imani <http://github.com/mimani68>" \
+      language="python"
+
+WORKDIR /usr/src
+
+COPY --from=base /src/usr ${WORKDIR}
+
+CMD ["python3", "manage.py", "runserver", "0.0.0.0:3000"]
